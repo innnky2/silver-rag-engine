@@ -1,0 +1,8 @@
+build/
+build-gpp/
+*.o
+*.a
+*.obj
+*.exe
+hlq_cpu_manifest.json
+output/
