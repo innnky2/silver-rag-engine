@@ -1,7 +1,7 @@
-// test_model.cpp — PROD model/generate tests (needs real --model, gated by size).
+// test_model.cpp — model/generate tests (needs --model, gated by size).
 // Build: cmake --build build --target test_model  (or g++ manual, see README)
 // Run: ./build/test_model --model model.gguf --max-new 8
-// GATE: skips generate when vocab==0 or layers==0 (returns 2 = SKIP, bukan FAIL).
+// GATE: skips generate when vocab==0 or layers==0 (returns 2 = SKIP).
 #include <cstdio>
 #include <cstring>
 #include <string>

@@ -1,25 +1,10 @@
-// ngram_spec.h — H3: free n-gram draft + thresholded verification.
+// ngram_spec.h — H3: n-gram draft + thresholded verification.
 //
-// THEORY (why a parameter-free draft can win):
-//   Speculative decoding (Leviathan et al., ICML 2023, arXiv:2211.17192;
-//   Chen et al., arXiv:2302.01318) splits generation into draft (cheap) and
-//   verify (one parallel target pass over K tokens). The output distribution
-//   is preserved by construction; wall-clock wins iff the acceptance rate
-//   alpha pays for the draft overhead. Expected tokens per target call is
-//   ~1 + alpha*K for greedy acceptance, so the H3 gate (speedup >= 1.2 with
-//   accept >= 0.6 at K <= 8) is the break-even check, not a tuning knob.
-//   An order-4 n-gram table is the cheapest draft that exploits the only
-//   structure it can rely on: local repetition (code templates, JSON keys,
-//   refactor spans). This is the same observation behind prompt-lookup
-//   decoding (llama.cpp speculative path): on diverse prose the table misses
-//   and H3 correctly predicts 0-10%; on templated text it hits and predicts
-//   >30%. The dup>20% guard in bench exists because repeated prompts fake
-//   alpha (the 4.75x pseudo-trap); real work text is required.
-//
-// Design: rolling-hash table (order N=4) over prompt + emitted tokens.
-// draft() proposes <=K continuations. verify_accept() is the INTEGRATION
-// point: the target model is called once for K tokens, longest accepted
-// prefix is kept. Acceptance statistics decide the H3 gate, not this file.
+// Speculative decoding (Leviathan et al., ICML 2023, arXiv:2211.17192;
+// Chen et al., arXiv:2302.01318): cheap draft + one parallel target pass
+// over K tokens. Passes the H3 gate at speedup >= 1.2 with accept >= 0.6
+// (K <= 8); the dup>20% guard rejects repeated prompts that inflate alpha.
+// Design: order-4 hash table over prompt + emitted tokens.
 #pragma once
 #include <cstddef>
 #include <cstdint>

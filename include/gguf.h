@@ -1,7 +1,7 @@
 #pragma once
-// gguf.h — PROD GGUFv3 reader, full KV spec + all common quant types.
+// gguf.h — GGUFv3 reader, full KV spec + all common quant types.
 //
-// Reads real .gguf files: magic, header, full KV metadata (all GGUF value
+// Reads .gguf files: magic, header, full KV metadata (all GGUF value
 // types), tensor infos, tokenizer arrays. Payloads streamed on demand.
 // K-quants (Q2_K..Q8_K) fully sized; IQ/BF16 reported explicitly.
 #include <cstdint>

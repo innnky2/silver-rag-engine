@@ -1,6 +1,6 @@
-// test_quant.cpp — PROD tests for quant.h (no synthetic model needed).
+// test_quant.cpp — tests for quant.h.
 // Build: g++ -std=c++17 -Iinclude tests/test_quant.cpp src/quant.cpp -o /tmp/t_quant
-// Run (mesin sidang): /tmp/t_quant  (exit 0 = PASS, non-zero = FAIL)
+// Run: /tmp/t_quant  (exit 0 = PASS, non-zero = FAIL)
 #include <cmath>
 #include <cstdio>
 #include <cstring>
@@ -135,7 +135,7 @@ static void test_k_quants_golden() {
   ok = ours::quant::dequant_to_f32(11, k3, 110, 256, out, err);
   CHECK(ok, "q3_k ok");
   if (ok) CHECK(std::fabs(out[0] - 128.0f) < 1e-3, "q3_k y0");
-  // Q4_K: dall=1.0, dmin=0.5, scales[0]=1 (b[4]), scales[4]=2 (b[8]) ->
+  // Q4_K: dall=1.0, dmin=0.5, scales[0]=1 (b[4]), scales[8]=2 (b[12]) ->
   // d1=1,m1=1; qs=0 -> y[0..31] = -1; y[32] = 0 (d2=m2=0).
   uint8_t k4[144];
   std::memset(k4, 0, 144);
@@ -164,7 +164,7 @@ static void test_k_quants_golden() {
   ok = ours::quant::dequant_to_f32(14, k6, 210, 256, out, err);
   CHECK(ok, "q6_k ok");
   if (ok) CHECK(std::fabs(out[0] - (-15.0f)) < 1e-4, "q6_k y0");
-  // Q8_K: d=2.0 (float LE), qs[0]=3 -> y0=6 (bsums ignored by design).
+  // Q8_K: d=2.0 (float LE), qs[0]=3 -> y0=6 (bsums not read).
   uint8_t k8[292];
   std::memset(k8, 0, 292);
   float dd = 2.0f;

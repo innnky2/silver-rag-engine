@@ -1,4 +1,4 @@
-// gguf.cpp — PROD GGUFv3 reader, full KV spec. No RNG, no synthetic data.
+// gguf.cpp — GGUFv3 reader, full KV spec.
 #include "gguf.h"
 
 #include <cmath>
@@ -296,10 +296,8 @@ bool read_tensor_bytes(const std::string& path, const ModelInfo& mi,
 
 bool q4_0_to_prod(const uint8_t* src, size_t src_bytes, std::vector<uint8_t>& q4_nib,
                   std::vector<float>& blk_scales) {
-  // GGML-exact input (dequantize_row_q4_0): byte j holds element j (low
-  // nibble) and element j+16 (high nibble). Prod nibble layout is SEQUENTIAL
-  // with even=LOW to match the integer-dot kernels: prod element 2k = low
-  // nibble of prod byte k, element 2k+1 = high nibble.
+  // GGML split-halves input: byte j holds element j (low) and j+16 (high).
+  // Prod layout is sequential even=LOW: element 2k = low nibble of byte k.
   q4_nib.clear();
   blk_scales.clear();
   if (!src || src_bytes == 0 || src_bytes % 18 != 0) return false;
@@ -308,8 +306,6 @@ bool q4_0_to_prod(const uint8_t* src, size_t src_bytes, std::vector<uint8_t>& q4
   q4_nib.resize((n + 1) / 2, 0);
   blk_scales.resize(nblocks);
   auto set_nib = [&](size_t gi, uint8_t nib) {
-    // Sequential prod layout, even=LOW: element 2k in the low nibble of byte
-    // k, element 2k+1 in the high nibble (matches the integer-dot kernels).
     if (gi & 1) q4_nib[gi >> 1] |= (uint8_t)((nib & 0x0F) << 4);
     else q4_nib[gi >> 1] = (uint8_t)((q4_nib[gi >> 1] & 0xF0) | (nib & 0x0F));
   };

@@ -1,4 +1,4 @@
-// test_kv_attn.cpp — PROD tests for Q8 KV + attention (no model file needed).
+// test_kv_attn.cpp — tests for Q8 KV + attention (no model file needed).
 // Build: g++ -std=c++17 -Iinclude tests/test_kv_attn.cpp src/kv_q8.cpp src/blocked_attn.cpp -o /tmp/t_kv
 #include <cmath>
 #include <cstdio>
@@ -21,9 +21,8 @@ int main() {
   CHECK(kv.seq_len() == 10, "seq len 10");
   CHECK(kv.bytes_total() >= kv.bytes_wire_total(), "resident includes history");
   CHECK(kv.bytes_fp16_same_len() == (size_t)10 * H * D * 2 * 2, "fp16 bytes");
-  // Wire ratio on tiny dims is ~1.1 (scales dominate) — honest. The H2 ~2x
-  // claim needs production dims; check it with H=8,D=128,L=256 below.
-  // K and V buffers must differ (regression: old code reused K for V).
+  // Wire ratio on tiny dims is ~1.1 (scales dominate); production dims below.
+  // K and V buffers must differ.
   {
     std::vector<float> k0((size_t)D), v0((size_t)D);
     kv.blocks[0].load_k_row(0, 9, k0.data());
@@ -55,7 +54,7 @@ int main() {
     CHECK(kv2.blocks.size() == 2 && kv2.seq_len() == 257, "block split");
     CHECK(kv2.blocks[0].len == 256 && kv2.blocks[1].len == 1, "block lens");
   }
-  // H2 wire ratio at production dims (H=8,D=128,L=256): must approach ~2x.
+  // Wire ratio at production dims (H=8,D=128,L=256): must approach ~2x.
   {
     ours::KvCacheQ8 kv3(8, 128);
     std::vector<float> k3(8 * 128), v3(8 * 128);

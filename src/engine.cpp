@@ -1,4 +1,4 @@
-// engine.cpp — PROD engine: real GGUF rows + full model wrapper.
+// engine.cpp — GGUF rows + full model wrapper.
 #include "engine.h"
 
 #include <cstring>

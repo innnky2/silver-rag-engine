@@ -1,4 +1,4 @@
-// sampler.cpp — PROD sampler (greedy + temp/top-k/top-p/min-p).
+// sampler.cpp — greedy/temp/top-k/top-p/min-p.
 #include "sampler.h"
 
 #include <algorithm>

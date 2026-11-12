@@ -43,9 +43,7 @@ float q4_q8_dot_ref(std::size_t n, const uint8_t* q4, float d_w,
   double acc = 0.0;
   for (std::size_t i = 0; i < n; ++i) {
     uint8_t nib = (i & 1) ? (q4[i >> 1] >> 4) : (q4[i >> 1] & 0x0F);
-    // Layout note (GGML-exact): prod nibbles are sequential, even=LOW
-    // (q4_0_to_prod converts GGML split-halves qs[j]:lo->elem j, hi->elem j+16
-    // into this order). Q4_K_M/IQ4_* need their own spec paths (see quant.cpp).
+    // Sequential prod nibbles, even=LOW (see q4_0_to_prod).
     acc += (double)((int)nib - 8) * (double)q8[i];
   }
   return (float)(acc * (double)d_w * (double)d_x);
@@ -54,11 +52,9 @@ float q4_q8_dot_ref(std::size_t n, const uint8_t* q4, float d_w,
 float q4_q8_dot(std::size_t n, const uint8_t* q4, float d_w,
                 const int8_t* q8, float d_x) {
 #if defined(OURS_AVX2)
-  // 16 weights per step: unpack 8 Q4 bytes -> 16 nibbles (cheap scalar),
+  // 16 weights per step: unpack 8 Q4 bytes -> 16 nibbles,
   // then 128-bit integer dot (16 lanes exactly; 256-bit loads would
-  // over-read tmp[16]/q8[16] and pollute the accumulator — fixed 2026-11-12).
-  // The scalar nibble expand is exact and off the hot path; no shuffle form
-  // is claimed here.
+  // over-read tmp[16]/q8[16] and pollute the accumulator).
   const __m128i ones16 = _mm_set1_epi16(1);
   __m128i acc4 = _mm_setzero_si128();  // 4 x int32
   long long sum_wx = 0, sum_x = 0;
@@ -106,8 +102,7 @@ float q4_q8_dot(std::size_t n, const uint8_t* q4, float d_w,
 
 void q4_q8_gemv(std::size_t m, std::size_t n, const uint8_t* const* rows,
                 float d_w, const int8_t* q8, float d_x, float* out) {
-  // Reference serial dispatch: correctness baseline for H1 checksums.
-  // Production threaded path is q4_q8_gemv_mt() / q4_q8_gemv_tiled().
+  // Reference serial dispatch. Timed runs use the _pool variants.
   if (!rows || !q8 || !out) return;
   for (std::size_t r = 0; r < m; ++r)
     out[r] = q4_q8_dot(n, rows[r], d_w, q8, d_x);
@@ -135,10 +130,8 @@ void q4_q8_gemv_mt(std::size_t m, std::size_t n, const uint8_t* const* rows,
 }
 
 void pack_q4_tiled(std::size_t n, const uint8_t* in, uint8_t* out) {
-  // Validated single-row normalize: prod nibble rows are already streaming for
-  // one row, so the permutation is identity BY DESIGN (matrix tiling lives in
-  // pack_q4_tiled_mat). The work here is validation + 32-nibble block walk so
-  // truncated/null inputs fail loudly instead of silently benchmarking zeros.
+  // Validated copy (null/size checks, 32-nibble block walk). Matrix tiling
+  // lives in pack_q4_tiled_mat.
   if (n == 0 || !in || !out) return;
   std::size_t nb = (n + 1) / 2;
   std::size_t off = 0;
@@ -151,7 +144,7 @@ void pack_q4_tiled(std::size_t n, const uint8_t* in, uint8_t* out) {
 }
 
 void build_lut2(const int8_t act[4], int scale, int lut[256]) {
-  // Exact scalar build (256 entries, cheap, done once per activation tile).
+  // Exact scalar build (256 entries, done once per activation tile).
   for (int b = 0; b < 256; ++b) {
     int s = 0;
     s += ((b >> 0) & 3) * act[0];
@@ -163,15 +156,11 @@ void build_lut2(const int8_t act[4], int scale, int lut[256]) {
 }
 
 int lut2_dot(std::size_t ngroups, const uint8_t* w2, const int lut[256]) {
-  // Exact scalar gather + AVX2 32-wide vectorized add-tree (no shuffle_epi8
-  // LUT lookup; the shuffle form is documented future work in lut_gemm.h).
-  // Byte layout: lo2 = bits[1:0] ... hi2 = bits[7:6] mapping to act[0..3]
-  // in build_lut2 order.
+  // Scalar gather + AVX2 32-wide add-tree. Byte layout: lo2 = bits[1:0] ...
+  // hi2 = bits[7:6] mapping to act[0..3] in build_lut2 order.
   if (!w2 || !lut || ngroups == 0) return 0;
 #if defined(OURS_AVX2)
-  // 32 lookups per step with scalar LUT fetch into a 32-wide int32 vector,
-  // then _mm256-add tree (memory-bound part is the 32 gathers, compute is
-  // vectorized). Exact, no clamping.
+  // 32 scalar LUT fetches into a 32-wide int32 vector, then _mm256-add tree.
   __m256i vacc0 = _mm256_setzero_si256(), vacc1 = _mm256_setzero_si256();
   std::size_t g = 0;
   for (; g + 32 <= ngroups; g += 32) {
@@ -259,9 +248,8 @@ void pack_q4_tiled_mat(std::size_t m, std::size_t n, const uint8_t* const* rows,
 void q4_q8_gemv_tiled(std::size_t m, std::size_t n, const uint8_t* tiled,
                       const int8_t* q8, float d_w, float d_x, float* out,
                       int nthreads, bool pin_threads) {
-  // One-shot utility: spawns + joins worker threads per call. The spawn cost
-  // is part of the measured time; production H4 timings must use
-  // q4_q8_gemv_tiled_pool() (persistent pool) instead.
+  // One-shot: spawns + joins threads per call (spawn cost included in time).
+  // Timed runs use q4_q8_gemv_tiled_pool() (persistent pool) instead.
   std::size_t rb = (n + 1) / 2;
   std::size_t tiles = (m + 31) / 32;
   auto one_row = [&](std::size_t gr) {
@@ -282,8 +270,7 @@ void q4_q8_gemv_tiled(std::size_t m, std::size_t n, const uint8_t* tiled,
   for (int w = 0; w < W; ++w) {
     pool.emplace_back([&, w, W, chunk]() {
       if (pin_threads) pin_current_thread(w % (int)hw);
-      // Contiguous block per worker: preserves 32-row tile locality
-      // (shared activation vector stays hot in L1/L2 across the tile).
+      // Contiguous block per worker keeps tile locality.
       std::size_t lo = (std::size_t)w * chunk;
       std::size_t hi = lo + chunk < m ? lo + chunk : m;
       for (std::size_t gr = lo; gr < hi; ++gr) one_row(gr);

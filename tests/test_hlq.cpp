@@ -1,4 +1,4 @@
-// test_hlq.cpp — PROD tests for HLQ bit-serial path (no model file needed).
+// test_hlq.cpp — tests for HLQ bit-serial path (no model file needed).
 // Covers: plane-interleave roundtrip, nibble unpack roundtrip, packed-file
 // path == per-group path, interleaved path == per-group path.
 #include <cmath>

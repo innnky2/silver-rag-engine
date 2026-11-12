@@ -1,4 +1,4 @@
-// test_norm_rope.cpp — PROD tests for RMSNorm/RoPE/softmax/silu.
+// test_norm_rope.cpp — tests for RMSNorm/RoPE/softmax/silu.
 // Build: g++ -std=c++17 -Iinclude tests/test_norm_rope.cpp src/norm_rope.cpp -o /tmp/t_nr
 #include <cmath>
 #include <cstdio>
@@ -39,7 +39,7 @@ int main() {
     CHECK(std::fabs(y[0] * y[0] + y[1] * y[1] - 1.0f) < 1e-6, "rope rotation norm");
   }
   {
-    // YaRN llama-faithful (rope_yarn): fallback paths identical to plain RoPE.
+    // YaRN (llama.cpp rope_yarn): fallback paths identical to plain RoPE.
     float a[4] = {1,2,3,4}, b[4] = {1,2,3,4};
     ours::rope_inplace_scaled(a, 4, 5, 10000.0f, 1, 2.0f, 128, 32.0f, 1.0f);
     ours::rope_inplace(b, 4, 5, 10000.0f, 1, 1);
@@ -50,8 +50,8 @@ int main() {
     CHECK(std::fabs(e[0]-f[0])+std::fabs(e[3]-f[3]) < 1e-6, "yarn scale=1 identity");
   }
   {
-    // YaRN active: low dims (high freq) keep ORIGINAL frequency, high dims
-    // take interpolated freq/scale; vectors scale by mscale = 1+0.1*ln(s).
+    // YaRN active: low dims keep original frequency, high dims take
+    // interpolated freq/scale; vectors scale by mscale = 1+0.1*ln(s).
     // head_dim=128, theta=10000, scale=2, orig=128, pos=200.
     const float mscale = 1.0f + 0.1f * std::log(2.0f);
     float x[128];

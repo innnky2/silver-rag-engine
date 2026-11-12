@@ -1,5 +1,5 @@
 #pragma once
-// threadpool.h — PROD persistent pinned thread pool with chunked parallel_for.
+// threadpool.h — persistent pinned thread pool with chunked parallel_for.
 #include <condition_variable>
 #include <functional>
 #include <mutex>

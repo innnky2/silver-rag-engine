@@ -1,11 +1,4 @@
-// main.cpp — PROD CLI on REAL files. No synthetic RNG.
-//   ours info --model X.gguf
-//   ours gemm --model X.gguf [--threads T] [--repeats R]
-//   ours kv   --model X.gguf [--depths 2K,8K,16K,32K]
-//   ours h4   --model X.gguf [--threads T]
-//   ours spec --prompts file.txt [--K 8]
-//   ours run  --model X.gguf --prompt "..." [--max-new N] [--temp T] [--threads H]
-//   ours roofline --bw GB/s --bytes N --tg T
+// main.cpp — CLI (info|gemm|kv|h4|spec|run|roofline).
 #include <chrono>
 #include <cmath>
 #include <cstdio>
@@ -35,15 +28,9 @@ static double now_s() {
 }
 
 int run_roofline(double bw_gbs, double gguf_bytes, double tg_meas) {
-  // Roofline accounting (explicit units): bw_gbs is DECIMAL GB/s (1e9 B/s, as
-  // vendors report STREAM/sustained memcpy); gguf_bytes is the model file size
-  // in BYTES (data_start-excluded payload + headers both resident on first
-  // touch). plafon = bandwidth_bytes_per_s / bytes_per_token, with
-  // bytes_per_token ~= gguf_bytes for weight-bound single-batch decode.
-  // Thresholds are DOCUMENTED heuristics from memory-bound GEMV practice
-  // (40-60% of STREAM = healthy; <30% = config problem: wrong threads, swap,
-  // partial offload, or KV blowup), NOT calibrated silicon constants. They are
-  // named here so the bench output is auditable.
+  // bw_gbs is decimal GB/s (1e9 B/s); plafon = bytes_per_s / bytes_per_token.
+  // 40-60% of STREAM is healthy, <30% means a config problem (threads, swap,
+  // offload, KV).
   constexpr double kHealthyLo = 0.40, kHealthyHi = 0.60, kMisconfig = 0.30;
   constexpr double kBytesPerGBDecimal = 1e9;
   if (bw_gbs <= 0 || gguf_bytes <= 0 || tg_meas <= 0) {
@@ -119,7 +106,6 @@ static bool real_act_from_model(const std::string& model_path, std::vector<int8_
                                  (size_t)ti.dims[1], 0, row, err)) return false;
   if (row.size() < n_cols) { err = "embd narrower than GEMM cols"; return false; }
   q8.assign(n_cols, 0);
-  // Real slice of the embedding (first n_cols), not a weight-derived probe.
   quant::quant_f32_to_q8(row.data(), n_cols, q8.data(), dx);
   return true;
 }
@@ -259,18 +245,14 @@ int run_kv_real(const std::string& model_path, const std::string& depths) {
   if (hq > 0 && emb > 0 && (emb % hq) == 0) head_dim = emb / hq;
   std::vector<int> Ls;
   parse_depths(depths, Ls);
-  // Real K/V distributions: cycle rows of the model's own attn_k/attn_v
-  // weight tensors (dequantized to f32) as representative K/V vectors.
-  // No zeros, no RNG: the cache holds real model-magnitude data, and we report
-  // both WIRE bytes (K+V int8 + scales, the H2 ~1/2 claim) and RESIDENT bytes
-  // (wire + exact float history for lossless requantize), plus the measured
-  // quantize-dequantize roundtrip error (max-abs + MSE vs the f32 source).
+  // K/V vectors cycle rows of the model's own attn_k/attn_v weights
+  // (dequantized to f32). Reports wire vs resident bytes plus the
+  // quantize-dequantize roundtrip error (max-abs + MSE vs f32).
   size_t ik = mi.tensors.size(), iv = mi.tensors.size();
   bool has_k = gguf::find_tensor(mi, "blk.0.attn_k.weight", ik);
   bool has_v = gguf::find_tensor(mi, "blk.0.attn_v.weight", iv);
   if (!has_k || !has_v) {
-    std::printf("KV: REFUSED (needs blk.0.attn_k/v.weight for real distributions; "
-                "zero-fill would fake the H2 number).\n");
+    std::printf("KV: REFUSED (needs blk.0.attn_k/v.weight).\n");
     return 2;
   }
   std::vector<uint8_t> rawk, rawv;
@@ -338,17 +320,14 @@ int run_kv_real(const std::string& model_path, const std::string& depths) {
                 (double)fp16 / (double)(wire ? wire : 1),
                 (double)fp16 / (double)(res ? res : 1), max_abs, mse);
   }
-  std::printf("NOTE: H2 pass needs wire_ratio~=2 with small maxabs/MSE at <=8K AND same-box\n"
-              "      decode timing; resident>wire is the exact-history cost (production drops\n"
-              "      history for wire bytes at the cost of lossy widening). Bytes alone are not a pass.\n");
+  std::printf("NOTE: H2 needs wire_ratio~=2 with small maxabs/MSE at <=8K plus\n"
+              "      same-box decode timing. Bytes alone are not a pass.\n");
   return 0;
 }
 
 int run_h4_real(const std::string& model_path, int threads) {
-  // H4 measures what H4 claims: tiled-32 + persistent pinned pool
-  // (q4_blockscales_gemv_tiled_pool on a 64B-aligned arena) vs the naive
-  // baseline (serial q4_blockscales_dot per row, untiled). Both run the same
-  // integer-dot on the same real Q4_0 rows + real token_embd activation.
+  // H4: tiled-32 + persistent pool vs serial naive, same integer-dot on the
+  // same Q4_0 rows + token_embd activation.
   gguf::ModelInfo mi;
   std::string err;
   if (!gguf::open(model_path, mi, err)) {
@@ -451,13 +430,10 @@ int run_h4_real(const std::string& model_path, int threads) {
 }
 
 int run_spec_real(const std::string& model_path, const std::string& prompts_path, int K) {
-  // H3 on REAL tokenizer ids: loads the GGUF tokenizer (BPE pieces + merges)
-  // via LlamaModel and encodes each prompt line. No FNV/hash surrogate: hash
-  // ids would inflate n-gram hit rates on repeated whitespace/punctuation and
-  // are NOT transferable to target-model accept rates.
+  // H3 on tokenizer ids: loads the GGUF tokenizer via LlamaModel and encodes
+  // each prompt line.
   if (model_path.empty()) {
-    std::printf("SPEC: REFUSED (needs --model for the real GGUF tokenizer; "
-                "hash-word surrogate was deleted as synthetic).\n");
+    std::printf("SPEC: REFUSED (needs --model for the GGUF tokenizer).\n");
     return 2;
   }
   LlamaModel lm;

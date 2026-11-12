@@ -1,9 +1,8 @@
-// kv_q8.cpp — PROD H2: per-block Q8 KV with SEPARATE K/V buffers.
+// kv_q8.cpp — per-block Q8 KV with separate K/V buffers.
 //
-// Running min/max per head-dim with exact float history for lossless
-// requantize on range widening (bounded 256 rows). Zero is always inside the
-// initial range (affine zero-point), then the range only widens.
-// KIVI-grade per-channel calibration is future work (documented, not faked).
+// Running min/max per head-dim with exact float history for
+// requantize on range widening (bounded 256 rows).
+// Per-channel calibration (KIVI) is future work.
 #include "kv_q8.h"
 
 namespace ours {
@@ -79,8 +78,7 @@ bool KvBlockQ8::append_key(const float* k_row, const float* v_row) {
         }
     }
     if (k_grew || v_grew) {
-      // Requantize ALL stored rows from exact float history with widened
-      // scales (bounded 256 rows; exact, no drift).
+      // Requantize stored rows from float history with widened scales.
       for (int p = 0; p <= len; ++p) {
         const std::size_t base = (std::size_t)p * n_head * head_dim;
         for (int h = 0; h < n_head; ++h)
@@ -142,8 +140,8 @@ std::size_t KvBlockQ8::bytes_full() const {
 }
 
 std::size_t KvBlockQ8::bytes_used() const {
-  // Resident bytes INCLUDING the exact float history used for lossless
-  // requantize (k_hist+v_hist). Production wire/storage bytes exclude history;
+  // Resident bytes include the exact float history used for requantize;
+  // wire bytes exclude it.
   // see bytes_wire_used() for the H2 ~1/2 FP16 claim denominator.
   std::size_t payload = (std::size_t)len * n_head * head_dim * 2;
   std::size_t scales =

@@ -11,10 +11,8 @@ void attn_decode_step(const KvCacheQ8& kv, int head, const float* q,
   float* scores = tmp;          // [L]
   float* krow = tmp + L;        // caller provides L + 2D scratch
   float* vrow = tmp + L + D;
-  // 1) Scores: Q.K_p per position (exact scalar dot; AVX2 path fuses dequant+dot
-  // in matvec_weight_q8fast/H1 — attention scores stay scalar because decode is
-  // 1xL streaming and the bottleneck is KV bytes, not score FLOPs).
-  // Scale = 1/sqrt(D) computed at runtime (was hardcoded 1/sqrt(128)).
+  // 1) Scores Q.K_p (scalar dot; decode is 1xL streaming, bound by KV bytes).
+  // Scale 1/sqrt(D) computed at runtime.
   const float inv_sqrt_d = 1.0f / std::sqrt((float)(D > 0 ? D : 1));
   float mx = -1e30f;
   int pos = 0;

@@ -1,7 +1,5 @@
 #pragma once
-// engine.h — PROD engine: GGUF reader + full llama decode + H1/H4 GEMV primitives.
-// Princeton: GEMV integer-dot (H1), tiled pool GEMV (H4), Q8 KV (H2),
-// n-gram draft (H3), roofline (H5), plus full generate() for real text.
+// engine.h — GGUF reader + full llama decode + H1/H4 GEMV primitives.
 #include <cstdint>
 #include <string>
 #include <vector>
@@ -30,7 +28,7 @@ class Engine {
   void gemv_rows(const std::vector<std::vector<uint8_t>>& tiled_rows,
                  const std::vector<std::vector<float>>& row_scales, const int8_t* q8_act,
                  float d_x, std::vector<float>& out);
-  // Full generation on real weights + real tokenizer.
+  // Full generation on weights + tokenizer.
   bool generate(const std::string& prompt, int max_new, float temp, std::vector<int32_t>& out_ids,
                 std::string& decoded, std::string& err);
 

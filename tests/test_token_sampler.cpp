@@ -1,4 +1,4 @@
-// test_token_sampler.cpp — PROD tests for tokenizer + sampler (needs real --model).
+// test_token_sampler.cpp — tests for tokenizer + sampler (needs --model).
 // Build: g++ -std=c++17 -Iinclude tests/test_token_sampler.cpp src/tokenizer.cpp src/sampler.cpp src/gguf.cpp -o /tmp/t_ts
 // Run: /tmp/t_ts --model model.gguf
 #include <cstdio>

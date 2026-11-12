@@ -1,4 +1,4 @@
-// test_gguf.cpp — PROD tests for GGUF reader (needs real --model file).
+// test_gguf.cpp — tests for GGUF reader (needs --model file for file part).
 // Build: g++ -std=c++17 -Iinclude tests/test_gguf.cpp src/gguf.cpp -o /tmp/t_gguf
 // Run: /tmp/t_gguf --model model.gguf
 #include <cmath>

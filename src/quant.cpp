@@ -1,4 +1,4 @@
-// quant.cpp — PROD dequant for F32/F16/Q4_0/Q4_1/Q5_0/Q5_1/Q8_0/Q8_1 + K-quants.
+// quant.cpp — dequant for F32/F16/Q4_0/Q4_1/Q5_0/Q5_1/Q8_0/Q8_1 + K-quants.
 #include "quant.h"
 
 #include <cmath>
@@ -321,11 +321,9 @@ void quant_f32_to_q8(const float* x, size_t n, int8_t* q8, float& d_x) {
   }
 }
 
-// H1 integer-dot with per-32-block scales: inner loop is pure integer
-// (u8 x i8 -> i32) via AVX2 maddubs/madd when available, one FP scale per
-// block applied outside. Prod nibbles are sequential even=LOW (element 2k in
-// the low nibble of byte k), exactly as q4_0_to_prod emits; same convention
-// as q4_q8_dot (Jacob affine, arXiv:1712.05877 Eq.1). Saturation limit identical.
+// H1 integer-dot with per-32-block scales: pure integer inner loop
+// (u8 x i8 -> i32), one FP scale per block. Prod nibbles are sequential
+// even=LOW, as q4_0_to_prod emits (Jacob affine, arXiv:1712.05877 Eq.1).
 float q4_blockscales_dot(size_t n, const uint8_t* q4, const float* blk_scales,
                          size_t blk_n, const int8_t* q8, float d_x) {
   double acc = 0.0;

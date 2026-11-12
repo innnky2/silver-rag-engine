@@ -1,5 +1,5 @@
 #pragma once
-// sampler.h — PROD greedy/temp/top-k/top-p sampler. RNG only for sampling.
+// sampler.h — greedy/temp/top-k/top-p sampler.
 #include <cstdint>
 #include <vector>
 

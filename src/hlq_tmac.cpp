@@ -29,9 +29,7 @@ void hlq_to_bipolar(const float* s, int q, float z, float* shat, float* zhat) {
 
 void pack_planes_interleaved(const uint8_t* const* planes, int q, uint8_t* out,
                              std::size_t ngroups) {
-  // D.1 rearrange (genuine transpose): out[g*q+j] = planes[j][g]. Offline,
-  // zero runtime overhead; the interleaved stream keeps every plane's group
-  // co-located for one sequential pass at decode.
+  // D.1 rearrange: out[g*q+j] = planes[j][g]. Offline.
   if (!planes || !out || q <= 0 || ngroups == 0) return;
   for (std::size_t g = 0; g < ngroups; ++g)
     for (int j = 0; j < q; ++j) out[g * (std::size_t)q + (std::size_t)j] = planes[j][g];
@@ -122,8 +120,7 @@ void build_lut_g4(const float act[4], float scale, float lut16[16]) {
 
 void mirror_compress16to8(const float lut16[16], float lut8[8]) {
   // Appendix D.2 storage trick, {0,1}-bit form: keep lut16[0..7]; the upper
-  // half is recovered by complement (lossless: lut16[b]+lut16[15-b] == S).
-  // Prototype convention: lut8[i] = lut16[i] for i<8; counterpart of idx>=8
+  // Half table stores lut16[0..7]; the upper half is lut16[b]+lut16[15-b] == S.
   // is S - lut8[15-idx] with S = group full-sum (see lut_lookup_mirror8).
   for (int i = 0; i < 8; ++i) lut8[i] = lut16[i];
 }
@@ -153,10 +150,8 @@ float bitserial_gemv_ref(const uint8_t* const* wplanes, int q,
 float bitserial_gemv_tmac_pergroup(const uint8_t* const* wplanes, int q,
                                    std::size_t ngroups, const float* scales_pg, float z,
                                    const float* act_blocks) {
-  // Full per-group path (ELUTQ Tables 7-8/12-14): scale per (plane, group).
-  // LUT build stays scalar (16 entries/group, cheap); accumulation over groups
-  // is 8-wide AVX2 (fmadd) when available, scalar otherwise. Mirror lookup is
-  // the lossless complement S - lut8[15-idx] for {0,1} bits.
+  // Per-group scales: scales_pg[j*ngroups+g]. Mirror lookup is the
+  // complement S - lut8[15-idx] for {0,1} bits.
   if (!wplanes || !scales_pg || !act_blocks) return (float)z;
   if (q <= 0 || ngroups == 0) return (float)((double)z * (double)ngroups);
   double acc_scalar_tail = (double)z * (double)ngroups;
@@ -283,10 +278,8 @@ float bitserial_gemv_tmac_pergroup(const uint8_t* const* wplanes, int q,
 float bitserial_gemv_tmac(const uint8_t* const* wplanes, int q,
                           std::size_t ngroups, const float* scales_global, float z,
                           const float* act_blocks) {
-  // Global-scale wrapper: broadcasts one scale per plane across groups, then
-  // calls the full per-group path. No separate math; kept for back-compat with
-  // global-scale quant output. For ELUTQ parity, callers must supply true
-  // per-group scales via bitserial_gemv_tmac_pergroup().
+  // Global-scale wrapper: broadcasts one scale per plane, then calls
+  // the per-group path.
   if (!wplanes || !scales_global || !act_blocks) return (float)z;
   if (q <= 0 || ngroups == 0) return (float)((double)z * (double)ngroups);
   std::vector<float> pg((std::size_t)(q > 0 ? q : 0) * ngroups, 0.0f);

@@ -1,5 +1,5 @@
 #pragma once
-// tokenizer.h — PROD BPE tokenizer from GGUF arrays (pieces + merges).
+// tokenizer.h — BPE tokenizer from GGUF arrays (pieces + merges).
 #include <cstdint>
 #include <string>
 #include <vector>

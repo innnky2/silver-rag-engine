@@ -1,7 +1,7 @@
 #pragma once
-// model.h — PROD llama-arch transformer on real GGUF weights.
+// model.h — llama-arch transformer on GGUF weights.
 // Full decode path: embed -> per-layer attn (GQA+RoPE+Q8 KV) -> SwiGLU FFN
-// -> output_norm -> lm_head -> sampler. No RNG except sampler stream.
+// -> output_norm -> lm_head -> sampler.
 #include <cstdint>
 #include <map>
 #include <string>

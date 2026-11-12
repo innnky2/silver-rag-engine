@@ -6,8 +6,7 @@
 namespace ours {
 
 uint64_t NgramDraft::hash_gram(const int32_t* toks, std::size_t n) {
-  // FNV-1a 64-bit: the production table hash (order-4 key -> continuations).
-  // No separate "production rolling hash": FNV over the gram IS the index.
+  // FNV-1a 64-bit table hash (order-4 key -> continuations).
   uint64_t h = 1469598103934665603ULL;
   for (std::size_t i = 0; i < n; ++i) {
     h ^= (uint64_t)(uint32_t)toks[i] + 0x9E3779B97F4A7C15ULL;
@@ -68,8 +67,7 @@ int32_t spec_step(NgramDraft& ng, TargetVerify target, const int32_t* ctx,
   if (accepted > m) accepted = m;
   stats.drafted += m;
   stats.accepted += accepted;
-  // The H3 gate is evaluated by ours spec on real prompts, NOT here:
-  // keep the draft iff speedup>=1.2 && accept>=0.6 on real work prompts.
+  // Keep the draft iff speedup>=1.2 && accept>=0.6 (H3 gate).
   return (accepted < m) ? corr : d[m - 1];
 }
 

@@ -1,19 +1,16 @@
 #!/usr/bin/env python3
-"""export_hlq_cpu.py — PROD exporter: real 1-bit plane packing (no manifest-only).
+"""export_hlq_cpu.py — 1-bit plane packer.
 
-Reads real HLQ quant output and writes real packed planes + scales + manifest.
-No synthetic data, no RNG, no downloads. scales.json is REQUIRED (no .npy
-fallback: numpy layouts varied across checkpoints and silently packing the
-wrong layout would fake the HLQ number).
+Reads HLQ quant output and writes packed planes + scales + manifest.
+scales.json is REQUIRED.
 
 Expected --resume_quant layout (from HLQ-GPTQ / block_ap / e2e_qp):
   <dir>/
     scales.json        # {"q": 2, "group_size": 128, "tensors": {"name": {"s": [...], "z": ...}}}
     <tensor>.bin      # raw float32 bit-values per plane (q * ngroups floats in [0,1])
-  scales.json "s" is ONE scale per plane (global-scale prototype path in
+  scales.json "s" holds ONE scale per plane (global-scale path in
   hlq::bitserial_gemv_tmac). Per-group scales g=128 (ELUTQ Tables 7-8/12-14)
-  need quantizer-side per-group output + hlq::bitserial_gemv_tmac_pergroup;
-  this exporter does NOT invent per-group scales by tiling globals.
+  need quantizer-side per-group output + hlq::bitserial_gemv_tmac_pergroup.
   Q4 tensors that are already binary are rejected (packs from float
   bit-values, not from GGUF).
 
@@ -22,16 +19,14 @@ Output (<save_path>/):
   planes.bin            # q bit-planes concatenated, each (ngroups+7)//8 bytes,
                         # 1 bit per group LSB-first (plane j at byte offset
                         # j*plane_bytes). Consumed by hlq::bitserial_gemv_tmac_packed.
-  scales.f32            # q float32 scales per tensor, concatenated (global-scale
-                        # prototype; per-group output is future work, see above)
+  scales.f32            # q float32 scales per tensor, concatenated
   zhat.f32              # per-tensor zhat (single float32, D.2)
   manifest["tensors"]   # per tensor: {name, q, ngroups, plane_bytes}
 
-The manifest records the exact on-disk layout so the C++ side never guesses:
-bytes_per_plane = (ngroups + 7) // 8. A read-back popcount check verifies
-planes.bin bit counts against the packed inputs before exit.
+A read-back popcount check verifies planes.bin bit counts against the packed
+inputs before exit.
 
-Bit order is the PROD contract consumed by hlq::bitserial_gemv_tmac*().
+Bit order is the contract consumed by hlq::bitserial_gemv_tmac*().
 """
 from __future__ import annotations
 import argparse
@@ -68,7 +63,7 @@ def main() -> int:
     meta = _load_scales(args.resume_quant)
     if meta is None:
         print("REFUSED: %s/scales.json not found (no real scales to pack; "
-              "manifest-only output is deleted synthetic behavior)." % args.resume_quant,
+              "manifest-only output is refused)." % args.resume_quant,
               file=sys.stderr)
         return 2
     try:

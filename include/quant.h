@@ -1,6 +1,6 @@
 #pragma once
-// quant.h — PROD dequant/quant for all common GGUF types.
-// No RNG. Reference: GGML dequant semantics (llama.cpp ggml.c), Jacob affine.
+// quant.h — dequant/quant for GGUF types.
+// Reference: GGML dequant semantics (llama.cpp ggml.c), Jacob affine.
 #include <cstddef>
 #include <cstdint>
 #include <string>

@@ -1,4 +1,4 @@
-// tokenizer.cpp — PROD BPE with GGUF merge ranks + longest-match map.
+// tokenizer.cpp — BPE with GGUF merge ranks + longest-match map.
 #include "tokenizer.h"
 
 #include <cstdio>

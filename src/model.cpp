@@ -1,4 +1,4 @@
-// model.cpp — PROD llama decode on real GGUF weights.
+// model.cpp — llama decode on GGUF weights.
 #include "model.h"
 
 #include <atomic>
@@ -148,20 +148,17 @@ bool LlamaModel::get_row(const std::string& name, size_t row, std::vector<float>
 
 bool LlamaModel::matvec_weight_q8fast(const WeightBlob& wb, const std::vector<int8_t>& q8buf,
                                       float dx, float* y, std::string& err) {
-  // Fast path only for Q4_0 2-D with per-block scales; else fall back to f32.
+  // Fast path only for Q4_0 2-D with per-block scales.
   if (wb.qtype != gguf::Q4_0 || wb.dims.size() != 2) return false;
   size_t n_cols = (size_t)wb.dims[0], n_rows = (size_t)wb.dims[1];
   size_t row_blk = (n_cols / 32) * 18;
   if (wb.raw.size() < n_rows * row_blk) { err = "Q4_0 payload truncated"; return false; }
   if (q8buf.size() < n_cols) { err = "q8buf smaller than n_cols (caller must quantize x first)"; return false; }
-  // Caller quantizes x once; here we consume q8buf+dx with per-block scales.
-  // Inner 32-lane dot is integer (qq-8)*q8 via AVX2 maddubs when available.
+  // Caller quantizes x once; this consumes q8buf+dx with per-block scales.
   pool_.parallel_for(n_rows, [&](size_t r) {
     const uint8_t* rp = wb.raw.data() + r * row_blk;
     // Per-block scales extracted on the fly (18B blocks, no temp alloc).
-    // Inner 32-dot is integer (qq-8)*q8 via AVX2 maddubs (x86) / exact scalar
-    // (ARM) — same Jacob-affine form as quant::q4_blockscales_dot, one FP
-    // scale per block outside the hot loop.
+    // Inner 32-dot is integer (qq-8)*q8 (AVX2 maddubs on x86).
     double acc = 0.0;
     size_t nb = n_cols / 32;
     for (size_t b = 0; b < nb; ++b) {
@@ -193,8 +190,7 @@ bool LlamaModel::matvec_weight_q8fast(const WeightBlob& wb, const std::vector<in
         sum_wx += _mm_cvtsi128_si32(sl);
       }
 #else
-      // Scalar fallback (ARM): same split-halves mapping as the AVX2 path
-      // above (elements 0..15 = low nibbles, 16..31 = high nibbles).
+      // Scalar fallback (ARM): same split-halves mapping as above.
       for (int i = 0; i < 16; ++i) {
         sum_wx += (long long)(int)(qs[i] & 0x0F) * (long long)xb[i];
         sum_wx += (long long)(int)((qs[i] >> 4) & 0x0F) * (long long)xb[16 + i];
@@ -213,7 +209,7 @@ bool LlamaModel::matvec_weight(const std::string& name, const float* x, size_t n
   auto it = weights_.find(name);
   if (it == weights_.end()) { err = "weight not loaded: " + name; return false; }
   const WeightBlob& wb = it->second;
-  // Try Q4 fast path on real activations (not a probe).
+  // Try Q4 fast path.
   if (wb.qtype == gguf::Q4_0 && wb.dims.size() == 2) {
     float dx = 0;
     if (q8buf_.size() < n_in) q8buf_.assign(n_in, 0);
