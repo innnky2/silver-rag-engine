@@ -1,25 +1,26 @@
-# OURS ENGINE — PROD (real GGUF weights, full decode)
+# OURS ENGINE - PROD (real GGUF weights, full decode)
 
 Status: PROD code path on real `.gguf` files. No synthetic RNG harness.
 `ours kv` uses real attn_k/v weight distributions (no zero-fill);
 `ours spec` uses the real GGUF BPE tokenizer (no hash surrogate, requires `--model`).
-No numbers here are measured — run on the defense machine before any claim.
+No numbers here are measured. Run on the defense machine before any claim.
 
 ## 1. Architecture thesis
 
 llama.cpp Q4 loses not because its C++ is bad, but because every decode token
-pays: (a) **byte overhead** — ~4.89 bits/weight from DRAM, (b) **dequantization
-overhead** — nibble→FP + FMA. Ours attacks both **without changing the model**:
-integer-dot plus a single final scale, Q8 KV-cache with separate K/V blocks,
-runtime `1/sqrt(D)` attention, tiled-32 + pinned persistent `ThreadPool`,
-n-gram draft with target-verify, and explicit roofline attribution.
+pays twice: (a) byte overhead, about 4.89 bits per weight read from DRAM, and
+(b) dequantization overhead, nibble to FP plus FMA. Ours attacks both without
+changing the model: integer-dot plus a single final scale, Q8 KV-cache with
+separate K/V blocks, runtime `1/sqrt(D)` attention, tiled-32 with a pinned
+persistent `ThreadPool`, n-gram draft with target-verify, and explicit roofline
+attribution.
 
 ## 2. PROD scope (complete, real files)
 
 | File | Role |
 |---|---|
-| `include/gguf.h`, `src/gguf.cpp` | GGUFv3 full-spec: all KV types, tokenizer arrays, all common quants F32/F16/Q4_0/Q4_1/Q5_0/Q5_1/Q8_0/Q8_1/Q2_K–Q8_K + explicit IQ/BF16 sizes |
-| `include/quant.h`, `src/quant.cpp` | GGML-exact dequant F32/F16/Q4_0–Q8_1 + Q2_K/Q3_K/Q4_K/Q5_K/Q6_K/Q8_K (split-halves/strided, aux-shuffle Q3_K), f32→Q8 act quant, per-block-scales integer dot |
+| `include/gguf.h`, `src/gguf.cpp` | GGUFv3 full-spec: all KV types, tokenizer arrays, all common quants (F32/F16, Q4_0 to Q8_1, Q2_K to Q8_K) + explicit IQ/BF16 sizes |
+| `include/quant.h`, `src/quant.cpp` | GGML-exact dequant for F32/F16, Q4_0 to Q8_1, and Q2_K to Q8_K (split-halves/strided, aux-shuffle Q3_K), f32 to Q8 act quant, per-block-scales integer dot |
 | `include/threadpool.h` | Pinned persistent pool, chunked parallel_for (1 job/worker) |
 | `include/norm_rope.h`, `src/norm_rope.cpp` | RMSNorm, NeoX RoPE, llama-faithful YaRN NTK-by-parts (linear ramp + mscale), SiLU, softmax, f32 matvec |
 | `include/tokenizer.h`, `src/tokenizer.cpp` | Longest-match BPE from `tokenizer.ggml.*`, byte-fallback, BOS/EOS |
@@ -34,7 +35,7 @@ n-gram draft with target-verify, and explicit roofline attribution.
 | `tools/export_hlq_cpu.py` | Real bitplane packer (scales.json required; ngroups/plane_bytes manifest; read-back verify) |
 | `src/main.cpp` | CLI `ours {info|gemm|kv|h4|spec|run|roofline}` |
 
-## 3. Hypotheses H1–H5 (measured on the defense machine)
+## 3. Hypotheses H1-H5 (measured on the defense machine)
 
 | H | Mechanism | Pass when | Fail when |
 |---|---|---|---|
@@ -42,7 +43,7 @@ n-gram draft with target-verify, and explicit roofline attribution.
 | H2 | `kv_q8.*` separate 256-block K/V + exact running min/max, len-aware `bytes_wire_total()` | ≤8K overhead <5% + small error | >5% at ≤8K → per-channel |
 | H3 | `ngram_spec.*` order-4, K≤8, 20% dup-guard | speedup≥1.2 ∧ accept≥0.6 on real prompts | below → drop draft |
 | H4 | `pack_q4_tiled_mat` + aligned arena + persistent pool (`q4_blockscales_gemv_tiled_pool`) | ≥+5% vs serial naive on real rows | <5% → bandwidth saturated |
-| H5 | `run_roofline`: ceiling = BW/bytes | 40–60% healthy; Ours ≥90% of same-bytes llama | <30% = misconfigured |
+| H5 | `run_roofline`: ceiling = BW/bytes | 40-60% healthy; Ours ≥90% of same-bytes llama | <30% = misconfigured |
 
 ## 4. PROD notes
 
@@ -57,7 +58,7 @@ n-gram draft with target-verify, and explicit roofline attribution.
 4. `kv` uses real `blk.0.attn_k/v` weight rows (not zeros) + reports
    `wire` (H2 claim) vs `resident` (includes exact history) + maxabs/MSE.
    `spec` uses real BPE ids (requires `--model`); without a model = REFUSED.
-5. A "faster than llama.cpp" claim is only valid against a `-ngl 0` baseline on
+5. Only claim "faster than llama.cpp" against a `-ngl 0` baseline on
    the same machine/threads/file (see `USAGE.md`).
 
 ## 5. Usage
