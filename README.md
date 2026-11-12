@@ -1,8 +1,8 @@
-# OURS ENGINE - PROD (real GGUF weights, full decode)
+# OURS ENGINE - full decode on GGUF weights
 
-Status: PROD code path on real `.gguf` files. No synthetic RNG harness.
-`ours kv` uses real attn_k/v weight distributions (no zero-fill);
-`ours spec` uses the real GGUF BPE tokenizer (no hash surrogate, requires `--model`).
+Status: code path for `.gguf` files. RNG is used only for sampling (temp>0).
+`ours kv` fills the cache from blk.0 attn_k/v weight rows.
+`ours spec` encodes prompts with the GGUF BPE tokenizer (requires `--model`).
 No numbers here are measured. Run on the defense machine before any claim.
 
 ## 1. Architecture thesis
@@ -15,7 +15,7 @@ separate K/V blocks, runtime `1/sqrt(D)` attention, tiled-32 with a pinned
 persistent `ThreadPool`, n-gram draft with target-verify, and explicit roofline
 attribution.
 
-## 2. PROD scope (complete, real files)
+## 2. Scope (complete, real files)
 
 | File | Role |
 |---|---|
@@ -45,7 +45,7 @@ attribution.
 | H4 | `pack_q4_tiled_mat` + aligned arena + persistent pool (`q4_blockscales_gemv_tiled_pool`) | ≥+5% vs serial naive on real rows | <5% → bandwidth saturated |
 | H5 | `run_roofline`: ceiling = BW/bytes | 40-60% healthy; Ours ≥90% of same-bytes llama | <30% = misconfigured |
 
-## 4. PROD notes
+## 4. Notes
 
 1. `q4_0_to_prod` keeps per-block 32-element scales (never averaged);
    the fast Q4_0 path uses per-block scales, the generic path uses full dequant.
@@ -53,13 +53,12 @@ attribution.
    (AVX2 `maddubs` when available, exact scalar fallback).
 2. Q4_K_M / Q5_K_M / Q6_K / Q8_K are supported via full dequant + `ours run`
    (not rejected). IQ/BF16 need model conversion first (explicit error).
-3. The `gemm/h4` act = a real `token_embd` row slice (model vector, Q8),
-   not a derived-byte probe.
-4. `kv` uses real `blk.0.attn_k/v` weight rows (not zeros) + reports
-   `wire` (H2 claim) vs `resident` (includes exact history) + maxabs/MSE.
-   `spec` uses real BPE ids (requires `--model`); without a model = REFUSED.
+3. The `gemm/h4` act = a `token_embd` row slice (model vector, Q8).
+4. `kv` reads `blk.0.attn_k/v` weight rows + reports
+   `wire` vs `resident` (includes exact history) + maxabs/MSE.
+   `spec` encodes prompts to BPE ids (requires `--model`; exits 2 without one).
 5. Only claim "faster than llama.cpp" against a `-ngl 0` baseline on
-   the same machine/threads/file (see `USAGE.md`).
+   the same machine/threads/file (see §5).
 
 ## 5. Usage
 

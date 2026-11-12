@@ -27,9 +27,9 @@ In `build_v23.py` / `refactor_bab3_part1.py` (Ours Engine subsection + Daftar Pu
 # Bab 3 — Ours Engine (kode lengkap, belum diukur):
 # Repo: https://github.com/<user>/ours-engine
 # Isi: include/hlq_tmac.h, src/hlq_tmac.cpp (ELUTQ-style CPU Appendix B/D/H.1),
-#      lut_gemm/kv_q8/ngram_spec + gguf/threadpool/engine (PROD H1-H5),
-#      tools/export_hlq_cpu.py (real packing),
-#      USAGE.md (ours info/gemm/kv/h4/spec/roofline), NOVELTY.md.
+#      lut_gemm/kv_q8/ngram_spec + gguf/threadpool/engine (H1-H5),
+#      tools/export_hlq_cpu.py (bitplane packing),
+#      README.md (ours info/gemm/kv/h4/spec/roofline).
 # Status: PROD baris-nyata, BELUM DIUKUR; Plot III.16-III.19 = prediksi.
 # Ukur di mesin sidang vs llama.cpp Q4 sama sebelum klaim apa pun.
 ```
