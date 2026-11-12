@@ -5,62 +5,62 @@ Status: PROD code path on real `.gguf` files. No synthetic RNG harness.
 `ours spec` uses the real GGUF BPE tokenizer (no hash surrogate, requires `--model`).
 No numbers here are measured — run on the defense machine before any claim.
 
-## 1. Tesis arsitektur
+## 1. Architecture thesis
 
-llama.cpp Q4 kalah bukan karena C++-nya jelek, melainkan tiap token decode
-membayar: (a) **overhead byte** — ~4,89 bit/bobot dari DRAM, (b) **overhead
-dekuantisasi** — nibble→FP + FMA. Ours menyerang keduanya **tanpa ganti model**:
-integer-dot + satu skala akhir, KV-cache Q8 blok K/V terpisah, attention
-`1/sqrt(D)` runtime, tiled-32 + `ThreadPool` persisten ber-pin, n-gram draft
-dengan target-verify, dan atribusi roofline eksplisit.
+llama.cpp Q4 loses not because its C++ is bad, but because every decode token
+pays: (a) **byte overhead** — ~4.89 bits/weight from DRAM, (b) **dequantization
+overhead** — nibble→FP + FMA. Ours attacks both **without changing the model**:
+integer-dot plus a single final scale, Q8 KV-cache with separate K/V blocks,
+runtime `1/sqrt(D)` attention, tiled-32 + pinned persistent `ThreadPool`,
+n-gram draft with target-verify, and explicit roofline attribution.
 
-## 2. Cakupan PROD (lengkap, file nyata)
+## 2. PROD scope (complete, real files)
 
-| File | Peran |
+| File | Role |
 |---|---|
-| `include/gguf.h`, `src/gguf.cpp` | GGUFv3 full-spec: semua tipe KV, array tokenizer, semua quant umum F32/F16/Q4_0/Q4_1/Q5_0/Q5_1/Q8_0/Q8_1/Q2_K–Q8_K + ukuran IQ/BF16 eksplisit |
-| `include/quant.h`, `src/quant.cpp` | Dequant GGML-exact F32/F16/Q4_0–Q8_1 + Q2_K/Q3_K/Q4_K/Q5_K/Q6_K/Q8_K (split-halves/strided, aux-shuffle Q3_K), quant act f32→Q8, dot per-block-scales integer |
-| `include/threadpool.h` | Pool persisten ber-pin, chunked parallel_for (1 job/worker) |
-| `include/norm_rope.h`, `src/norm_rope.cpp` | RMSNorm, RoPE NeoX, YaRN NTK-by-parts llama-faithful (ramp linear + mscale), SiLU, softmax, matvec f32 |
-| `include/tokenizer.h`, `src/tokenizer.cpp` | BPE longest-match dari `tokenizer.ggml.*`, byte-fallback, BOS/EOS |
+| `include/gguf.h`, `src/gguf.cpp` | GGUFv3 full-spec: all KV types, tokenizer arrays, all common quants F32/F16/Q4_0/Q4_1/Q5_0/Q5_1/Q8_0/Q8_1/Q2_K–Q8_K + explicit IQ/BF16 sizes |
+| `include/quant.h`, `src/quant.cpp` | GGML-exact dequant F32/F16/Q4_0–Q8_1 + Q2_K/Q3_K/Q4_K/Q5_K/Q6_K/Q8_K (split-halves/strided, aux-shuffle Q3_K), f32→Q8 act quant, per-block-scales integer dot |
+| `include/threadpool.h` | Pinned persistent pool, chunked parallel_for (1 job/worker) |
+| `include/norm_rope.h`, `src/norm_rope.cpp` | RMSNorm, NeoX RoPE, llama-faithful YaRN NTK-by-parts (linear ramp + mscale), SiLU, softmax, f32 matvec |
+| `include/tokenizer.h`, `src/tokenizer.cpp` | Longest-match BPE from `tokenizer.ggml.*`, byte-fallback, BOS/EOS |
 | `include/sampler.h`, `src/sampler.cpp` | Greedy/temp/top-k/top-p/min-p |
-| `include/model.h`, `src/model.cpp` | Llama decode penuh: embed → attn GQA+YaRN+KV-Q8 → SwiGLU → norm → lm_head → generate |
-| `include/engine.h`, `src/engine.cpp` | Wrapper Engine: info/GEMV-H1/H4 + generate teks nyata |
-| `include/lut_gemm.h`, `src/lut_gemm.cpp` | H1 integer-dot + tiled GEMV (pool persisten, arena aligned) |
-| `include/kv_q8.h`, `src/kv_q8.cpp` | H2 K/V terpisah, wire vs residen len-aware |
-| `include/blocked_attn.h`, `src/blocked_attn.cpp` | Decode attention two-pass eksak `1/sqrt(D)` runtime |
+| `include/model.h`, `src/model.cpp` | Full Llama decode: embed → attn GQA+YaRN+Q8-KV → SwiGLU → norm → lm_head → generate |
+| `include/engine.h`, `src/engine.cpp` | Engine wrapper: info/GEMV-H1/H4 + real-text generate |
+| `include/lut_gemm.h`, `src/lut_gemm.cpp` | H1 integer-dot + tiled GEMV (persistent pool, aligned arena) |
+| `include/kv_q8.h`, `src/kv_q8.cpp` | H2 separate K/V, len-aware wire vs resident |
+| `include/blocked_attn.h`, `src/blocked_attn.cpp` | Exact two-pass decode attention, runtime `1/sqrt(D)` |
 | `include/ngram_spec.h`, `src/ngram_spec.cpp` | H3 draft + target-verify |
-| `include/hlq_tmac.h`, `src/hlq_tmac.cpp` | Jalur HLQ CPU (mirror komplemen; interleave D.1; per-group penuh + AVX2/NEON; jalur file-packed; global-scale = wrapper upper-bound) |
-| `tools/export_hlq_cpu.py` | Packer bitplane nyata (wajib scales.json; manifest ngroups/plane_bytes; read-back verify) |
+| `include/hlq_tmac.h`, `src/hlq_tmac.cpp` | HLQ CPU path (complement mirror; D.1 interleave; full per-group + AVX2/NEON; packed-file path; global-scale = upper-bound wrapper) |
+| `tools/export_hlq_cpu.py` | Real bitplane packer (scales.json required; ngroups/plane_bytes manifest; read-back verify) |
 | `src/main.cpp` | CLI `ours {info|gemm|kv|h4|spec|run|roofline}` |
 
-## 3. Hipotesis H1–H5 (diukur di mesin sidang)
+## 3. Hypotheses H1–H5 (measured on the defense machine)
 
-| H | Mekanisme | Lulus bila | Gugur bila |
+| H | Mechanism | Pass when | Fail when |
 |---|---|---|---|
-| H1 | `lut_gemm.*` INT4×INT8, `q4_q8_dot` | checksum OK vs ref di baris GGUF nyata | mismatch / gain <5% |
-| H2 | `kv_q8.*` blok-256 K/V terpisah + running min/max eksak, `bytes_wire_total()` len-aware | ≤8K overhead <5% + error kecil | >5% di ≤8K → per-channel |
-| H3 | `ngram_spec.*` order-4, K≤8, dup-guard 20% | speedup≥1,2 ∧ accept≥0,6 di prompt nyata | di bawah → lepas draf |
-| H4 | `pack_q4_tiled_mat` + arena aligned + pool persisten (`q4_blockscales_gemv_tiled_pool`) | ≥+5% vs serial naive di baris nyata | <5% → bandwidth jenuh |
-| H5 | `run_roofline`: plafon = BW/byte | 40–60% sehat; Ours ≥90% llama byte-sama | <30% = miskonfigurasi |
+| H1 | `lut_gemm.*` INT4×INT8, `q4_q8_dot` | checksum OK vs ref on real GGUF rows | mismatch / gain <5% |
+| H2 | `kv_q8.*` separate 256-block K/V + exact running min/max, len-aware `bytes_wire_total()` | ≤8K overhead <5% + small error | >5% at ≤8K → per-channel |
+| H3 | `ngram_spec.*` order-4, K≤8, 20% dup-guard | speedup≥1.2 ∧ accept≥0.6 on real prompts | below → drop draft |
+| H4 | `pack_q4_tiled_mat` + aligned arena + persistent pool (`q4_blockscales_gemv_tiled_pool`) | ≥+5% vs serial naive on real rows | <5% → bandwidth saturated |
+| H5 | `run_roofline`: ceiling = BW/bytes | 40–60% healthy; Ours ≥90% of same-bytes llama | <30% = misconfigured |
 
-## 4. Catatan PROD
+## 4. PROD notes
 
-1. `q4_0_to_prod` menyimpan skala per-block 32-elemen (tidak di-average);
-   jalur cepat Q4_0 memakai skala per-block, jalur generik memakai dequant penuh.
-   `q4_blockscales_dot` dan `matvec_weight_q8fast` memakai integer-dot
-   (`maddubs` AVX2 bila tersedia, fallback skalar eksak).
-2. Q4_K_M / Q5_K_M / Q6_K / Q8_K didukung via dequant penuh + `ours run`
-   (bukan ditolak). IQ/BF16 butuh konversi model dulu (error eksplisit).
-3. Act `gemm/h4` = slice baris `token_embd` nyata (vektor model, Q8),
-   bukan probe derivasi-byte.
-4. `kv` memakai baris bobot `blk.0.attn_k/v` nyata (bukan nol) + lapor
-   `wire` (klaim H2) vs `resident` (termasuk histori eksak) + maxabs/MSE.
-   `spec` memakai IDs BPE nyata (wajib `--model`); tanpa model = REFUSED.
-5. Klaim "lebih cepat dari llama.cpp" hanya sah dengan baseline `-ngl 0`
-   mesin/thread/file sama (lihat `USAGE.md`).
+1. `q4_0_to_prod` keeps per-block 32-element scales (never averaged);
+   the fast Q4_0 path uses per-block scales, the generic path uses full dequant.
+   `q4_blockscales_dot` and `matvec_weight_q8fast` use integer-dot
+   (AVX2 `maddubs` when available, exact scalar fallback).
+2. Q4_K_M / Q5_K_M / Q6_K / Q8_K are supported via full dequant + `ours run`
+   (not rejected). IQ/BF16 need model conversion first (explicit error).
+3. The `gemm/h4` act = a real `token_embd` row slice (model vector, Q8),
+   not a derived-byte probe.
+4. `kv` uses real `blk.0.attn_k/v` weight rows (not zeros) + reports
+   `wire` (H2 claim) vs `resident` (includes exact history) + maxabs/MSE.
+   `spec` uses real BPE ids (requires `--model`); without a model = REFUSED.
+5. A "faster than llama.cpp" claim is only valid against a `-ngl 0` baseline on
+   the same machine/threads/file (see `USAGE.md`).
 
-## 5. Cara pakai
+## 5. Usage
 
 ```sh
 cmake -B build -DCMAKE_BUILD_TYPE=Release && cmake --build build
@@ -68,7 +68,7 @@ cmake -B build -DCMAKE_BUILD_TYPE=Release && cmake --build build
 ./build/ours gemm --model model.gguf --threads 4
 ./build/ours kv   --model model.gguf --depths 2K,8K,16K,32K
 ./build/ours h4   --model model.gguf --threads 4
-./build/ours spec --model model.gguf --prompts kerja_nyata.txt --K 8
-./build/ours run  --model model.gguf --prompt "Halo dunia" --max-new 64 --temp 0 --threads 4
+./build/ours spec --model model.gguf --prompts real_work.txt --K 8
+./build/ours run  --model model.gguf --prompt "Hello world" --max-new 64 --temp 0 --threads 4
 ./build/ours roofline --bw 38 --bytes 4900000000 --tg 3.6
 ```
