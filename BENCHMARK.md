@@ -1,5 +1,7 @@
 # Benchmark: ours vs llama.cpp native (TinyStories 15M)
 
+![Ours vs native](bench_plot.png)
+
 Measured 2026-11-24 on the defense-equivalent CPU box. Smallest credible
 GGUF pair that fits a fast bench loop (see model cards below).
 
