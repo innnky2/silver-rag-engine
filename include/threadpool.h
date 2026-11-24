@@ -49,11 +49,10 @@ class ThreadPool {
   ~ThreadPool() { shutdown(); }
   ThreadPool(const ThreadPool&) = delete;
   ThreadPool& operator=(const ThreadPool&) = delete;
-  ThreadPool(ThreadPool&& o) noexcept { move_from(std::move(o)); }
-  ThreadPool& operator=(ThreadPool&& o) noexcept {
-    if (this != &o) { shutdown(); move_from(std::move(o)); }
-    return *this;
-  }
+  // Move ops deleted: worker threads capture `this`; moving thread objects
+  // would dangle those pointers (silent pool death). Use reset() instead.
+  ThreadPool(ThreadPool&& o) noexcept = delete;
+  ThreadPool& operator=(ThreadPool&& o) noexcept = delete;
 
   int size() const { return (int)workers_.size(); }
 
@@ -125,15 +124,6 @@ class ThreadPool {
     workers_.clear();
     std::queue<std::function<void()>> empty;
     std::swap(jobs_, empty);
-  }
-  void move_from(ThreadPool&& o) {
-    workers_ = std::move(o.workers_);
-    jobs_ = std::move(o.jobs_);
-    active_ = o.active_;
-    stop_ = o.stop_;
-    pin_ = o.pin_;
-    o.active_ = 0;
-    o.stop_ = true;
   }
   std::vector<std::thread> workers_;
   std::queue<std::function<void()>> jobs_;

@@ -123,7 +123,7 @@ bool LlamaModel::load(const std::string& gguf_path, int threads, bool pin, std::
   constexpr size_t kInitSeq = 4096, kHeadDimMax = 256;
   tmp_attn_.assign(kInitSeq + 2 * kHeadDimMax, 0);  // grown on demand in decode_step
   q8buf_.assign(N > FF ? N : FF, 0);
-  pool_ = ThreadPool(threads, pin);
+  pool_.reset(threads, pin);  // in-place restart: move-assign would dangle worker this-pointers
   loaded_ = true;
   return true;
 }
